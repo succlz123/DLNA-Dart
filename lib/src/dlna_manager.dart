@@ -33,9 +33,9 @@ class DLNAManager {
     _deviceManger = DiscoveryDeviceManger();
     _contentParser = DiscoveryContentParser(
         processAlive: (String usn, String location, String cache) {
-      _deviceManger.onAlive(usn, location, cache);
+      _deviceManger.alive(usn, location, cache);
     }, processByeBye: (String usn) {
-      _deviceManger.onByeBye(usn);
+      _deviceManger.byeBye(usn);
     });
     _dlnaConnectivity.init((bool available) {
       if (available) {
@@ -110,7 +110,7 @@ class DLNAManager {
     _isRelease = true;
     _dlnaConnectivity.release();
     stopSearch();
-    _deviceManger.onRelease();
+    _deviceManger.release();
     _soapController.release();
   }
 

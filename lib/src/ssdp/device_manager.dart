@@ -13,8 +13,9 @@ class DiscoveryDeviceManger {
   // 150s = 2.5min
   static const int DEVICE_DESCRIPTION_INTERVAL_TIME = 150000;
 
-  // 60s = 1min
-  static const int DEVICE_ALIVE_OFFSET_TIME = 60000;
+  // 5min
+  static const DEVICE_ALIVE_CHECK_INTERVAL_TIME = Duration(minutes: 5);
+  static const DEVICE_ALIVE_CHECK_RETRY_INTERVAL_TIME = Duration(seconds: 30);
 
   final int _startSearchTime = DateTime.now().millisecondsSinceEpoch;
   final List<String> _descTasks = [];
@@ -48,14 +49,19 @@ class DiscoveryDeviceManger {
 
   void enable() {
     _disable = false;
-    _timer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
-      onAliveCheck();
+    _timer = Timer.periodic(DEVICE_ALIVE_CHECK_INTERVAL_TIME, (Timer t) {
+      if (_disable) {
+        return;
+      }
+      _currentDevices.forEach((key, value) {
+        _checkAliveDevice(value, 0);
+      });
     });
     if (_enableCache) {
       getLocalDevices().then((devices) {
         if (devices != null) {
           for (var device in devices) {
-            onCacheAlive(device);
+            _cacheAlive(device);
           }
         }
       }).catchError((error) {});
@@ -70,7 +76,7 @@ class DiscoveryDeviceManger {
     _disable = true;
   }
 
-  void onRelease() {
+  void release() {
     disable();
     _refresher = null;
     _descriptionParser.stop();
@@ -79,19 +85,7 @@ class DiscoveryDeviceManger {
     _currentDevices.clear();
   }
 
-  void onCacheAlive(DLNADevice device) async {
-    if (_disable) {
-      return;
-    }
-    var hasTask = _descTasks.contains(device.uuid);
-    if (hasTask) {
-      return;
-    }
-    _descTasks.add(device.uuid);
-    await getDescription(device, 0, FROM_CACHE_ADD);
-  }
-
-  Future<void> onAlive(String usn, String location, String cache) async {
+  Future<void> alive(String usn, String location, String cache) async {
     if (_disable) {
       return;
     }
@@ -123,28 +117,28 @@ class DiscoveryDeviceManger {
         ..location = location
         ..setCacheControl = cacheTime;
       _descTasks.add(device.uuid);
-      await getDescription(device, count, FROM_ADD);
+      await _getDescription(device, count, FROM_ADD);
     } else {
       var hasTask = _descTasks.contains(uuid);
       if (hasTask) {
         return;
       }
       var isLocationChang = (location != tmpDevice.location);
-      var updateTime = tmpDevice.lastDescriptionTime;
-      var diff = DateTime.now().millisecondsSinceEpoch - updateTime;
-      if (diff > 0 || isLocationChang) {
+      var diff =
+          DateTime.now().millisecondsSinceEpoch - tmpDevice.lastDescriptionTime;
+      if (diff > DEVICE_DESCRIPTION_INTERVAL_TIME || isLocationChang) {
         tmpDevice
           ..usn = usn
           ..uuid = uuid
           ..location = location
           ..setCacheControl = cacheTime;
         _descTasks.add(uuid);
-        await getDescription(tmpDevice, 0, FROM_UPDATE);
+        await _getDescription(tmpDevice, 0, FROM_UPDATE);
       }
     }
   }
 
-  void onByeBye(String usn) {
+  void byeBye(String usn) {
     if (_disable) {
       return;
     }
@@ -152,56 +146,73 @@ class DiscoveryDeviceManger {
     if (split == null || split.isEmpty) {
       return;
     }
-    onRemove(split.first);
+    _onRemove(split.first);
   }
 
-  void onAliveCheck() {
+  void _cacheAlive(DLNADevice device) async {
     if (_disable) {
       return;
     }
-    _currentDevices.removeWhere((key, value) {
-      var currentTime = DateTime.now().millisecondsSinceEpoch;
-      var needRemove = currentTime > value.expirationTime;
-      if (needRemove) {
-        needRemove = (currentTime - value.lastDescriptionTime) >
-            DEVICE_DESCRIPTION_INTERVAL_TIME + DEVICE_ALIVE_OFFSET_TIME;
+    var hasTask = _descTasks.contains(device.uuid);
+    if (hasTask) {
+      return;
+    }
+    _descTasks.add(device.uuid);
+    await _getDescription(device, 0, FROM_CACHE_ADD);
+  }
+
+  void _checkAliveDevice(DLNADevice device, int count) {
+    _descriptionParser.getDescription(device).then((value) {
+      if (value == null) {
+        if (count >= 3) {
+          _onRemove(device.uuid);
+        } else {
+          Future.delayed(DEVICE_ALIVE_CHECK_RETRY_INTERVAL_TIME, () {
+            _checkAliveDevice(device, count + 1);
+          });
+        }
       }
-      if (needRemove) {
-        onAliveCheckRemove(value);
+    }).catchError((e) {
+      if (count >= 3) {
+        _onRemove(device.uuid);
+      } else {
+        Future.delayed(DEVICE_ALIVE_CHECK_RETRY_INTERVAL_TIME, () {
+          _checkAliveDevice(device, count + 1);
+        });
       }
-      return needRemove;
     });
   }
 
-  Future<void> getDescription(DLNADevice device, int tryCount, int type) async {
+  Future<void> _getDescription(
+      DLNADevice device, int tryCount, int type) async {
     try {
-      var descriptionTaskStartTime = DateTime.now().millisecondsSinceEpoch;
+      var startTime = DateTime.now().millisecondsSinceEpoch;
       var desc = await _descriptionParser.getDescription(device);
-      if (desc.avTransportControlURL == null ||
+      device.description = desc;
+      var endTime = DateTime.now().millisecondsSinceEpoch;
+      device.lastDescriptionTime = endTime;
+      device.descriptionTaskSpendingTime = endTime - startTime;
+      if (desc == null ||
+          desc.avTransportControlURL == null ||
           desc.avTransportControlURL.isEmpty) {
         tryCount++;
-        onUnnecessary(device, tryCount);
+        _onUnnecessary(device, tryCount);
         return;
       }
-      device.description = desc;
-      device.lastDescriptionTime = DateTime.now().millisecondsSinceEpoch +
-          DEVICE_DESCRIPTION_INTERVAL_TIME;
-      device.descriptionTaskSpendingTime =
-          DateTime.now().millisecondsSinceEpoch - descriptionTaskStartTime;
       switch (type) {
         case FROM_ADD:
           {
-            onAdd(device);
+            _onAdd(device);
           }
           break;
         case FROM_UPDATE:
           {
-            onUpdate(device);
+            _onUpdate(device);
           }
           break;
         case FROM_CACHE_ADD:
           {
-            onCacheAdd(device);
+            _onCacheAdd(device);
           }
           break;
         default:
@@ -209,20 +220,21 @@ class DiscoveryDeviceManger {
           break;
       }
     } catch (e) {
-      onSearchError(device.toString() + '\n' + e.toString());
+      _onSearchError(
+          'getDescription\n' + device.toString() + '\n' + e.toString());
     }
   }
 
-  void onSearchError(String message) {
+  void _onSearchError(String message) {
     _refresher?.onSearchError(message);
   }
 
-  void onUnnecessary(DLNADevice device, int count) {
+  void _onUnnecessary(DLNADevice device, int count) {
     _unnecessaryDevices[device.location] = count;
     _descTasks.remove(device.uuid);
   }
 
-  void onAdd(DLNADevice device) {
+  void _onAdd(DLNADevice device) {
     device.discoveryFromStartSpendingTime =
         DateTime.now().millisecondsSinceEpoch - _startSearchTime;
     device.isFromCache = false;
@@ -234,7 +246,7 @@ class DiscoveryDeviceManger {
     _refresher?.onDeviceAdd(device);
   }
 
-  void onCacheAdd(DLNADevice device) {
+  void _onCacheAdd(DLNADevice device) {
     device.discoveryFromStartSpendingTime =
         DateTime.now().millisecondsSinceEpoch - _startSearchTime;
     device.isFromCache = true;
@@ -246,7 +258,7 @@ class DiscoveryDeviceManger {
     _refresher?.onDeviceAdd(device);
   }
 
-  void onUpdate(DLNADevice device) {
+  void _onUpdate(DLNADevice device) {
     _currentDevices[device.uuid] = device;
     if (_enableCache) {
       _localDeviceParser.saveDevices(_currentDevices);
@@ -255,14 +267,7 @@ class DiscoveryDeviceManger {
     _refresher?.onDeviceUpdate(device);
   }
 
-  void onAliveCheckRemove(DLNADevice device) {
-    if (_enableCache) {
-      _localDeviceParser.saveDevices(_currentDevices);
-    }
-    _refresher?.onDeviceRemove(device);
-  }
-
-  void onRemove(String uuid) {
+  void _onRemove(String uuid) {
     DLNADevice device = _currentDevices.remove(uuid);
     if (device != null) {
       if (_enableCache) {

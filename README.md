@@ -1,7 +1,7 @@
 ## DLNA-Dart
 
 A simple DLNA DMC library implemented by Dart.  
-It is tiny and only the most basic network video casting function is supported. 
+It is tiny and only the basic network video casting function is supported. 
 
 ### Structure
 
@@ -9,7 +9,7 @@ It is tiny and only the most basic network video casting function is supported.
 
 ### Flutter Demo
 
-https://github.com/succlz123/Flutter-DLNA
+[Flutter-DLNA](https://github.com/succlz123/Flutter-DLNA)
 
 ### Usage
 
@@ -21,11 +21,9 @@ Android Manifest.xml
 <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 ```
 
-#### pub
+#### Pub
 
-~~~
-https://pub.dev/packages/dlna
-~~~
+[https://pub.dev/packages/dlna](https://pub.dev/packages/dlna)
 
 #### Import
 
@@ -58,8 +56,8 @@ dlnaManager.stopSearch();
 #### Send the video url to the device
 
 ``` dart
-var didlObject = VideoObject(title, url, VideoObject.VIDEO_MP4);
-await widget.dlnaManager.actSetVideoUrl(_didlObject);
+var videoObject = VideoObject(title, url, VideoObject.VIDEO_MP4);
+await dlnaManager.actSetVideoUrl(videoObject);
 ```
 
 #### Release server

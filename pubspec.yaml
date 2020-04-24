@@ -1,7 +1,7 @@
 name: dlna
-description: A simple DLNA DMC library implemented by Dart. It is tiny and only the most basic network video casting function is supported.
+description: A simple DLNA DMC library implemented by Dart. It is tiny and only the basic network video casting function is supported.
 homepage: https://github.com/succlz123/DLNA-Dart
-version: 0.0.4
+version: 0.0.5
 
 environment:
   sdk: ">=2.7.0 <3.0.0"
