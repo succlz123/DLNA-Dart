@@ -8,7 +8,7 @@ import '../dlna_device.dart';
 class LocalDeviceParser {
   static const String KEY_DLNA_CACHE_DEVICES = 'key_dlna_cache_devices';
 
-  /// Only Platform.isAndroid || Platform.isIOS
+  /// Only for Platform.isAndroid || Platform.isIOS
   void saveDevices(Map<String, DLNADevice> devices) async {
     var prefs = await SharedPreferences.getInstance();
     var jsonDevices = jsonEncode(devices);
@@ -22,6 +22,9 @@ class LocalDeviceParser {
 
   Future<List<DLNADevice>> findAndConvert() async {
     var deviceStr = await getCacheDevices();
+    if (deviceStr == null || deviceStr.isEmpty) {
+      return null;
+    }
     var devices = jsonDecode(deviceStr);
     if (devices != null) {
       var deviceMap = Map<String, Map>.from(devices);

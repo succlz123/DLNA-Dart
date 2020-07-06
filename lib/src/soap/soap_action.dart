@@ -42,7 +42,7 @@ abstract class AbsDLNAAction<T> {
     try {
       var request = await httpClient.postUrl(Uri.parse(url))
         ..headers.contentType = contentType
-        ..headers.contentLength = content.length
+        ..headers.contentLength = utf8.encode(content).length
         ..headers.add('Connection', 'Keep-Alive')
         ..headers.add('Charset', 'UTF-8')
         ..headers.add('Soapaction', getSoapAction())
